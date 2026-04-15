@@ -1,0 +1,37 @@
+============================================================
+       CKD RISK PREDICTION — PATIENT REPORT CARD
+============================================================
+
+  Patient Index (Test Set): 0
+  Original Dataset Row:     589
+
+--- DEMOGRAPHICS ---
+  Age:         31
+  Gender:      Female
+
+--- CLINICAL VALUES ---
+  Serum Creatinine: 4.56 mg/dL
+  eGFR:             12.34 mL/min/1.73m²
+  Hemoglobin:       10.51 g/dL
+
+--- ML PREDICTION ---
+  Prediction:   CKD
+  CKD Probability: 89.69%
+  Risk Category:   High
+
+--- CKD STAGING ---
+  eGFR:        12.34 mL/min/1.73m²
+  CKD Stage:   Stage 5
+  Description: Kidney Failure
+
+--- TOP EXPLANATIONS (SHAP) ---
+  1. gender decreases CKD risk (SHAP = -0.7137)
+  2. do_you_take_extra_salt_with_your_food decreases CKD risk (SHAP = -0.4296)
+  3. do_you_have_high_blood_pressure_hypertension decreases CKD risk (SHAP = -0.1890)
+
+  Actual Label: CKD
+
+============================================================
+  DISCLAIMER: This tool is for decision support only.
+  Not a replacement for medical diagnosis.
+============================================================

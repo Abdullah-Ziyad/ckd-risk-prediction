@@ -1,0 +1,2 @@
+Patient_Index,Age,Gender,Serum_Creatinine,eGFR,Hemoglobin,Prediction,CKD_Probability_%,Risk_Category,CKD_Stage,Stage_Description,Actual_Label,Top1_Feature,Top1_SHAP,Top1_Direction,Top2_Feature,Top2_SHAP,Top2_Direction,Top3_Feature,Top3_SHAP,Top3_Direction
+0,31,Female,4.56,12.34,10.51,CKD,89.69,High,Stage 5,Kidney Failure,CKD,gender,-0.7137,decreases,do_you_take_extra_salt_with_your_food,-0.4296,decreases,do_you_have_high_blood_pressure_hypertension,-0.189,decreases
