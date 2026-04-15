@@ -570,7 +570,11 @@ elif page == "Risk Assessment":
 
         else:  # Manual input
             st.subheader("Enter Patient Data")
-            st.caption("eGFR & serum creatinine are used for staging only — the model predicts CKD from symptoms, demographics, and hemoglobin.")
+            st.caption(
+                "Serum creatinine is used to automatically calculate eGFR "
+                "(CKD-EPI 2021 formula). eGFR is used for CKD staging only — "
+                "the model predicts CKD from symptoms, demographics, and hemoglobin."
+            )
 
             col1, col2 = st.columns(2)
             with col1:
@@ -579,9 +583,22 @@ elif page == "Risk Assessment":
                 hemoglobin = st.number_input(
                     "Hemoglobin (g/dL)", min_value=3.0, max_value=20.0, value=12.5, step=0.1
                 )
-                egfr_input = st.number_input(
-                    "eGFR (mL/min/1.73m²) — for staging only",
-                    min_value=1.0, max_value=200.0, value=75.0, step=1.0
+                serum_creatinine_input = st.number_input(
+                    "Serum Creatinine (mg/dL)",
+                    min_value=0.1, max_value=15.0, value=1.0, step=0.1,
+                    help="Blood test result. eGFR will be auto-calculated from Age, Gender, and this value.",
+                )
+
+                # Auto-calculate eGFR using CKD-EPI 2021 formula
+                from src.staging import estimate_egfr_ckd_epi
+                egfr_input = estimate_egfr_ckd_epi(
+                    serum_creatinine=serum_creatinine_input,
+                    age=float(age),
+                    is_female=(gender == "Female"),
+                )
+                st.info(
+                    f"**Auto-calculated eGFR:** {egfr_input} mL/min/1.73m² "
+                    f"(CKD-EPI 2021 formula)"
                 )
 
             with col2:
@@ -625,16 +642,21 @@ elif page == "Risk Assessment":
                 st.markdown("---")
                 st.subheader("Results")
 
-                c1, c2, c3 = st.columns(3)
+                c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Prediction", "CKD" if pred == 1 else "Not CKD")
                 c2.metric("Probability", f"{prob*100:.1f}%")
+                c3.metric("eGFR", f"{egfr_input}", help="Auto-calculated from CKD-EPI 2021 formula")
                 if pred == 1:
                     stage = classify_egfr_stage(egfr_input)
-                    c3.metric("CKD Stage", f"{stage}")
+                    c4.metric("CKD Stage", f"{stage}")
                 else:
-                    c3.metric("CKD Stage", "N/A")
+                    c4.metric("CKD Stage", "N/A")
 
                 st.markdown(f"**Risk Category:** {risk_badge(risk)}", unsafe_allow_html=True)
+                st.markdown(
+                    f"**Serum Creatinine:** {serum_creatinine_input} mg/dL &nbsp;&nbsp;|&nbsp;&nbsp; "
+                    f"**Computed eGFR:** {egfr_input} mL/min/1.73m²"
+                )
                 if pred == 1:
                     stage = classify_egfr_stage(egfr_input)
                     st.markdown(f"**CKD Stage:** {stage_badge(stage)}", unsafe_allow_html=True)

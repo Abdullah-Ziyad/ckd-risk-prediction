@@ -69,7 +69,13 @@ def get_stage_color(stage: str) -> str:
 def estimate_egfr_ckd_epi(
     serum_creatinine: float, age: float, is_female: bool
 ) -> float:
-    """Estimate eGFR using the CKD-EPI 2021 formula (fallback).
+    """Estimate eGFR using the CKD-EPI 2021 formula.
+
+    Formula (no race coefficient, matches reference):
+      Male   (S.cr <= 0.9): eGFR = 142 * (S.cr/0.9)^(-0.302) * (0.9938)^Age
+      Male   (S.cr >  0.9): eGFR = 142 * (S.cr/0.9)^(-1.200) * (0.9938)^Age
+      Female (S.cr <= 0.7): eGFR = 142 * (S.cr/0.7)^(-0.241) * (0.9938)^Age
+      Female (S.cr >  0.7): eGFR = 142 * (S.cr/0.7)^(-1.200) * (0.9938)^Age
 
     Args:
         serum_creatinine: Serum creatinine in mg/dL.
@@ -77,25 +83,24 @@ def estimate_egfr_ckd_epi(
         is_female: True if the patient is female.
 
     Returns:
-        Estimated GFR in mL/min/1.73m2.
+        Estimated GFR in mL/min/1.73m2, rounded to 2 decimal places.
     """
     if is_female:
         kappa = 0.7
         alpha = -0.241
-        sex_factor = 1.012
     else:
         kappa = 0.9
         alpha = -0.302
-        sex_factor = 1.0
 
     scr_ratio = serum_creatinine / kappa
-    egfr = (
-        142
-        * min(scr_ratio, 1.0) ** alpha
-        * max(scr_ratio, 1.0) ** (-1.200)
-        * 0.9938 ** age
-        * sex_factor
-    )
+
+    # If S.cr <= kappa: use alpha exponent; else use -1.200
+    if serum_creatinine <= kappa:
+        exponent = alpha
+    else:
+        exponent = -1.200
+
+    egfr = 142 * (scr_ratio ** exponent) * (0.9938 ** age)
     return round(egfr, 2)
 
 
