@@ -684,6 +684,172 @@ elif page == "Risk Assessment":
                 fig.update_layout(height=300)
                 st.plotly_chart(fig, use_container_width=True)
 
+                # ── SHAP Explainability for Manual Input ──
+                st.markdown("---")
+                st.subheader("SHAP Explainability — Why This Prediction?")
+
+                try:
+                    # TreeExplainer doesn't support StackingClassifier — use best base model
+                    shap_model = best_model
+                    shap_model_name = best_name
+                    if best_name == "Stacking":
+                        base_df = comp_df[comp_df["Model"] != "Stacking"]
+                        base_sorted = base_df.sort_values(by=["Recall", "F1-Score"], ascending=False)
+                        shap_model_name = base_sorted.iloc[0]["Model"]
+                        shap_model = models[shap_model_name]
+
+                    explainer = shap.TreeExplainer(shap_model)
+                    shap_vals = explainer.shap_values(input_vector)
+                    if isinstance(shap_vals, list):
+                        shap_vals = shap_vals[1]
+                    patient_shap = shap_vals[0]
+
+                    # ── 1. SHAP Feature Impact Bar Chart ──
+                    sorted_idx = np.argsort(np.abs(patient_shap))[::-1]
+                    top_features = [get_display_name(feature_names[i]) for i in sorted_idx]
+                    top_shap = [patient_shap[i] for i in sorted_idx]
+                    colors = ["#e74c3c" if v > 0 else "#2ecc71" for v in top_shap]
+
+                    fig_shap = go.Figure(go.Bar(
+                        y=top_features[::-1],
+                        x=top_shap[::-1],
+                        orientation="h",
+                        marker_color=colors[::-1],
+                    ))
+                    fig_shap.update_layout(
+                        title=f"Feature Impact on Prediction (SHAP — {shap_model_name})",
+                        xaxis_title="SHAP Value (Red = increases CKD risk, Green = decreases)",
+                        height=max(350, len(feature_names) * 45),
+                    )
+                    st.plotly_chart(fig_shap, use_container_width=True)
+
+                    # ── 2. Top 3 Text Explanations ──
+                    st.markdown("#### Top 3 Contributing Factors")
+
+                    # Human-readable values for display
+                    readable_values = {
+                        "age": f"{age} years",
+                        "gender": gender,
+                        "hemoglobin": f"{hemoglobin} g/dL",
+                        "have_you_ever_been_diagnosed_with_diabetes": diabetes,
+                        "do_you_have_high_blood_pressure_hypertension": hypertension,
+                        "do_you_notice_foamy_urine": foamy_urine,
+                        "do_you_take_extra_salt_with_your_food": extra_salt,
+                    }
+
+                    for rank, idx in enumerate(sorted_idx[:3], 1):
+                        fname = get_display_name(feature_names[idx])
+                        sv = patient_shap[idx]
+                        raw_val = readable_values.get(feature_names[idx], "")
+                        if sv > 0:
+                            icon = "🔴"
+                            direction = "**increases CKD risk**"
+                        else:
+                            icon = "🟢"
+                            direction = "**decreases CKD risk**"
+
+                        st.markdown(
+                            f"{icon} **{rank}. {fname}** = {raw_val} → "
+                            f"{direction} (SHAP = {sv:+.4f})"
+                        )
+
+                    # ── 3. Clinical Guidance Box ──
+                    st.markdown("---")
+                    st.subheader("Clinical Guidance")
+
+                    # Collect top risk-increasing factors for guidance
+                    risk_increasing = [
+                        get_display_name(feature_names[i])
+                        for i in sorted_idx[:5]
+                        if patient_shap[i] > 0
+                    ]
+                    risk_decreasing = [
+                        get_display_name(feature_names[i])
+                        for i in sorted_idx[:5]
+                        if patient_shap[i] < 0
+                    ]
+
+                    if pred == 1:
+                        # CKD detected
+                        stage_text = classify_egfr_stage(egfr_input)
+                        stage_desc = get_stage_description(stage_text)
+
+                        risk_factors_html = ""
+                        if risk_increasing:
+                            risk_factors_html = (
+                                "<li><b>Key risk factors:</b> "
+                                + ", ".join(risk_increasing)
+                                + "</li>"
+                            )
+
+                        protective_html = ""
+                        if risk_decreasing:
+                            protective_html = (
+                                "<li><b>Protective factors:</b> "
+                                + ", ".join(risk_decreasing)
+                                + "</li>"
+                            )
+
+                        st.markdown(
+                            f"""
+                            <div style="background-color:#fadbd8; padding:20px; border-radius:10px;
+                            border-left:6px solid #e74c3c;">
+                            <h4 style="color:#c0392b; margin-top:0;">⚠️ CKD Detected — {stage_text} ({stage_desc})</h4>
+                            <ul style="font-size:15px; line-height:1.8;">
+                            {risk_factors_html}
+                            {protective_html}
+                            <li>eGFR = {egfr_input} mL/min/1.73m² (S.Cr = {serum_creatinine_input} mg/dL)</li>
+                            <li><b>Recommendation:</b> Consider nephrology referral for further evaluation.</li>
+                            <li>Regular monitoring of kidney function (eGFR, serum creatinine) advised.</li>
+                            <li>Manage underlying conditions (diabetes, hypertension) if applicable.</li>
+                            </ul>
+                            <p style="font-size:12px; color:#888; margin-bottom:0;">
+                            <em>⚕️ This is decision support only — not a medical diagnosis.</em></p>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        # Not CKD
+                        protective_html = ""
+                        if risk_decreasing:
+                            protective_html = (
+                                "<li><b>Protective factors:</b> "
+                                + ", ".join(risk_decreasing)
+                                + "</li>"
+                            )
+
+                        watch_html = ""
+                        if risk_increasing:
+                            watch_html = (
+                                "<li><b>Watch factors:</b> "
+                                + ", ".join(risk_increasing)
+                                + " — these slightly increase risk. Monitor over time.</li>"
+                            )
+
+                        st.markdown(
+                            f"""
+                            <div style="background-color:#d5f5e3; padding:20px; border-radius:10px;
+                            border-left:6px solid #27ae60;">
+                            <h4 style="color:#1e8449; margin-top:0;">✅ No CKD Detected</h4>
+                            <ul style="font-size:15px; line-height:1.8;">
+                            {protective_html}
+                            {watch_html}
+                            <li>eGFR = {egfr_input} mL/min/1.73m² (S.Cr = {serum_creatinine_input} mg/dL)</li>
+                            <li>CKD Probability: {prob*100:.1f}% — {risk} risk category.</li>
+                            <li><b>Recommendation:</b> Continue routine health check-ups annually.</li>
+                            <li>Maintain healthy lifestyle — stay hydrated, limit salt intake.</li>
+                            </ul>
+                            <p style="font-size:12px; color:#888; margin-bottom:0;">
+                            <em>⚕️ This is decision support only — not a medical diagnosis.</em></p>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                except Exception as e:
+                    st.warning(f"SHAP explanation unavailable: {e}")
+
 
 # ═══════════════════════════════════════════════════════
 # PAGE 5: POPULATION ANALYTICS
