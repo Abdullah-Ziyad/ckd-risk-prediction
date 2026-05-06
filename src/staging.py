@@ -26,11 +26,7 @@ CKD_STAGES = {
 
 
 def classify_egfr_stage(egfr: float) -> str:
-    """Classify a single eGFR value into a CKD stage based on eGFR ALONE.
-
-    NOTE: Per KDIGO criteria, Stage 1 and Stage 2 also require markers of
-    kidney damage (e.g. urine abnormalities like proteinuria/foamy urine).
-    For full KDIGO classification use classify_ckd_stage_kdigo() instead.
+    """Classify a single eGFR value into a CKD stage.
 
     Args:
         egfr: Estimated glomerular filtration rate.
@@ -52,48 +48,8 @@ def classify_egfr_stage(egfr: float) -> str:
         return "Stage 5"
 
 
-def classify_ckd_stage_kdigo(egfr: float, has_urine_abnormality: bool) -> str:
-    """Classify CKD stage following full KDIGO criteria.
-
-    Stage 1 and Stage 2 require BOTH:
-      - eGFR in range (>=90 for S1, 60-89 for S2)
-      - markers of kidney damage (urine abnormality, e.g. proteinuria/foamy urine)
-
-    Stages 3a, 3b, 4, 5 are determined by eGFR alone.
-
-    Args:
-        egfr: Estimated glomerular filtration rate (mL/min/1.73m^2).
-        has_urine_abnormality: True if patient has urine markers (e.g. foamy urine).
-
-    Returns:
-        CKD stage string. Returns "No CKD (Normal eGFR)" or
-        "No CKD (Mild eGFR decrease, no urine markers)" when eGFR is in
-        Stage 1/2 range but no urine abnormality is present.
-    """
-    if egfr >= 90:
-        if has_urine_abnormality:
-            return "Stage 1"
-        return "No CKD (Normal eGFR, no urine markers)"
-    elif egfr >= 60:
-        if has_urine_abnormality:
-            return "Stage 2"
-        return "No CKD (Mild eGFR decrease, no urine markers)"
-    elif egfr >= 45:
-        return "Stage 3a"
-    elif egfr >= 30:
-        return "Stage 3b"
-    elif egfr >= 15:
-        return "Stage 4"
-    else:
-        return "Stage 5"
-
-
 def get_stage_description(stage: str) -> str:
     """Get the clinical description for a CKD stage."""
-    if stage and stage.startswith("No CKD"):
-        if "Normal eGFR" in stage:
-            return "Normal kidney function — no CKD criteria met"
-        return "Mild eGFR decrease — but no urine markers, KDIGO criteria for CKD not met"
     return CKD_STAGES.get(stage, {}).get("description", "Unknown")
 
 

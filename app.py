@@ -26,10 +26,7 @@ from src.preprocessing import (
     EXCLUDE_FROM_PREDICTION,
 )
 from src.risk_scoring import get_risk_category, get_risk_color
-from src.staging import (
-    classify_egfr_stage, classify_ckd_stage_kdigo,
-    get_stage_description, get_stage_color,
-)
+from src.staging import classify_egfr_stage, get_stage_description, get_stage_color
 from src.explainability import explain_patient
 
 # ── Page Configuration ──
@@ -485,13 +482,6 @@ elif page == "Risk Assessment":
                 orig_row = df.iloc[orig_idx]
                 egfr_val = float(orig_row.get("egfr", 0))
 
-                # Read foamy_urine for KDIGO criteria
-                foamy_raw = orig_row.get("do_you_notice_foamy_urine", "No")
-                has_urine_abn = (
-                    str(foamy_raw).strip().lower() in ("yes", "y", "1", "true")
-                )
-                kdigo_stage_existing = classify_ckd_stage_kdigo(egfr_val, has_urine_abn)
-
                 st.markdown("---")
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Prediction", "CKD" if pred == 1 else "Not CKD")
@@ -503,18 +493,9 @@ elif page == "Risk Assessment":
                 with col_a:
                     st.markdown(f"**Risk Category:** {risk_badge(risk)}", unsafe_allow_html=True)
                 with col_b:
-                    if pred == 1 and not kdigo_stage_existing.startswith("No CKD"):
-                        st.markdown(
-                            f"**CKD Stage (KDIGO):** {stage_badge(kdigo_stage_existing)}",
-                            unsafe_allow_html=True,
-                        )
-                    elif pred == 1 and kdigo_stage_existing.startswith("No CKD"):
-                        st.markdown(
-                            '**CKD Stage (KDIGO):** <span style="background-color:#f39c12;color:white;'
-                            'padding:5px 15px;border-radius:15px;font-weight:bold;font-size:14px;">'
-                            '⚠ ML predicted CKD but KDIGO criteria not met — clinical review</span>',
-                            unsafe_allow_html=True,
-                        )
+                    if pred == 1:
+                        stage = classify_egfr_stage(egfr_val)
+                        st.markdown(f"**CKD Stage:** {stage_badge(stage)}", unsafe_allow_html=True)
                     else:
                         st.markdown(
                             '**CKD Stage:** <span style="background-color:#95a5a6;color:white;'
@@ -522,10 +503,6 @@ elif page == "Risk Assessment":
                             'N/A — No CKD Detected</span>',
                             unsafe_allow_html=True,
                         )
-                st.caption(
-                    f"eGFR = {egfr_val} mL/min/1.73m²  ·  Foamy Urine = {foamy_raw}  "
-                    f"(KDIGO Stage 1/2 require urine abnormality)"
-                )
 
                 # Gauge
                 fig = go.Figure(go.Indicator(
@@ -665,50 +642,24 @@ elif page == "Risk Assessment":
                 st.markdown("---")
                 st.subheader("Results")
 
-                # KDIGO-based staging (uses foamy urine as urine abnormality marker)
-                has_urine_abnormality = (foamy_urine == "Yes")
-                kdigo_stage = classify_ckd_stage_kdigo(egfr_input, has_urine_abnormality)
-
-                # Display stage label (short version for metric card)
-                if pred == 1:
-                    if kdigo_stage.startswith("No CKD"):
-                        stage_short = "N/A (criteria not met)"
-                    else:
-                        stage_short = kdigo_stage
-                else:
-                    stage_short = "N/A"
-
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Prediction", "CKD" if pred == 1 else "Not CKD")
                 c2.metric("Probability", f"{prob*100:.1f}%")
                 c3.metric("eGFR", f"{egfr_input}", help="Auto-calculated from CKD-EPI 2021 formula")
-                c4.metric(
-                    "CKD Stage",
-                    stage_short,
-                    help="KDIGO criteria — Stage 1/2 require urine abnormality (foamy urine)",
-                )
+                if pred == 1:
+                    stage = classify_egfr_stage(egfr_input)
+                    c4.metric("CKD Stage", f"{stage}")
+                else:
+                    c4.metric("CKD Stage", "N/A")
 
                 st.markdown(f"**Risk Category:** {risk_badge(risk)}", unsafe_allow_html=True)
                 st.markdown(
                     f"**Serum Creatinine:** {serum_creatinine_input} mg/dL &nbsp;&nbsp;|&nbsp;&nbsp; "
-                    f"**Computed eGFR:** {egfr_input} mL/min/1.73m² &nbsp;&nbsp;|&nbsp;&nbsp; "
-                    f"**Foamy Urine:** {foamy_urine}"
+                    f"**Computed eGFR:** {egfr_input} mL/min/1.73m²"
                 )
-                if pred == 1 and not kdigo_stage.startswith("No CKD"):
-                    st.markdown(
-                        f"**CKD Stage (KDIGO):** {stage_badge(kdigo_stage)}",
-                        unsafe_allow_html=True,
-                    )
-                elif pred == 1 and kdigo_stage.startswith("No CKD"):
-                    # Model says CKD but eGFR/urine criteria don't fully meet KDIGO Stage 1/2
-                    st.markdown(
-                        f'**CKD Stage (KDIGO):** <span style="background-color:#f39c12;color:white;'
-                        f'padding:5px 15px;border-radius:15px;font-weight:bold;font-size:14px;">'
-                        f'⚠ ML predicted CKD, but KDIGO stage not assigned — '
-                        f'eGFR ({egfr_input}) is in Stage 1/2 range and no urine abnormality reported. '
-                        f'Clinical review recommended.</span>',
-                        unsafe_allow_html=True,
-                    )
+                if pred == 1:
+                    stage = classify_egfr_stage(egfr_input)
+                    st.markdown(f"**CKD Stage:** {stage_badge(stage)}", unsafe_allow_html=True)
                 else:
                     st.markdown(
                         '**CKD Stage:** <span style="background-color:#95a5a6;color:white;'
@@ -819,8 +770,8 @@ elif page == "Risk Assessment":
                     ]
 
                     if pred == 1:
-                        # CKD detected — use KDIGO stage (already computed above)
-                        stage_text = kdigo_stage
+                        # CKD detected
+                        stage_text = classify_egfr_stage(egfr_input)
                         stage_desc = get_stage_description(stage_text)
 
                         risk_factors_html = ""
