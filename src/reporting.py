@@ -17,7 +17,9 @@ import seaborn as sns
 
 from src.data_loader import get_display_name
 from src.risk_scoring import get_risk_category, get_risk_color
-from src.staging import classify_egfr_stage, get_stage_description
+from src.staging import (
+    classify_egfr_stage, classify_ckd_stage_kdigo, get_stage_description,
+)
 from src.explainability import explain_patient
 
 logger = logging.getLogger(__name__)
@@ -64,10 +66,14 @@ def generate_patient_report(
     probability = float(model.predict_proba(X_test[patient_idx].reshape(1, -1))[0, 1])
     risk_category = get_risk_category(probability)
 
-    # CKD Stage — only show for CKD-positive predictions
+    # CKD Stage — KDIGO criteria (Stage 1/2 require urine abnormality)
     egfr_value = float(patient_row.get("egfr", 0))
+    foamy_raw = patient_row.get("do_you_notice_foamy_urine", "No")
+    has_urine_abn = (
+        str(foamy_raw).strip().lower() in ("yes", "y", "1", "true")
+    )
     if prediction == 1:
-        ckd_stage = classify_egfr_stage(egfr_value)
+        ckd_stage = classify_ckd_stage_kdigo(egfr_value, has_urine_abn)
         stage_desc = get_stage_description(ckd_stage)
     else:
         ckd_stage = "N/A"
